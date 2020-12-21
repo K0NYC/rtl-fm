@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+
+usage() {
+    printf "                                                                                 \n"
+    printf "  Usage: rtl-fm <rtl_fm options> actions                                         \n"
+    printf "                                                                                 \n"
+    printf "  rtl_fm options:                                                                \n"
+    printf "    -f  frequency_to_tune_to [Hz]                                                \n"
+    printf "        use multiple -f for scanning (requires squelch)                          \n"
+    printf "        ranges supported, -f 118M:137M:25k                                       \n"
+    printf "    [-M modulation (default: fm)]                                                \n"
+    printf "        fm, wbfm, raw, am, usb, lsb                                              \n"
+    printf "        wbfm == -M fm -s 170k -o 4 -A fast -r 32k -l 0 -E deemp                  \n"
+    printf "        raw mode outputs 2x16 bit IQ pairs                                       \n"
+    printf "    [-s sample_rate (default: 24k)]                                              \n"
+    printf "    [-d device_index (default: 0)]                                               \n"
+    printf "    [-g tuner_gain (default: automatic)]                                         \n"
+    printf "    [-l squelch_level (default: 0/off)]                                          \n"
+    printf "    [-p ppm_error (default: 0)]                                                  \n"
+    printf "                                                                                 \n"
+    printf "                                                                                 \n"
+    printf "  Actions are:                                                                   \n"
+    printf "    --play                play to the local sound card, requires headphones      \n"
+    printf "                                                                                 \n"
+    printf "    --stream              stream the sound to the network on port 8080           \n"
+    printf "                                                                                 \n"
+    printf "    --sar filename        sound activated recording to a local file,             \n"
+    printf "                          must provide filename without extension,               \n"
+    printf "                          runs on background                                     \n"
+    printf "                                                                                 \n"
+    printf "    --play-sar filename   sound activated recording to a local file with         \n"
+    printf "                          sound played to the local sound card,                  \n"
+    printf "                          must provide filename and use headphones,              \n"
+    printf "                          should not use another SDR dongle with --play option   \n"
+    printf "                          to not mix the sound and trigger recording             \n"
+    printf "                                                                                 \n"
+    printf "    --transcribe          starts 'transcribe' script                             \n"
+    printf "                          Can be used with '--sar' or '--play-sar' options only  \n"
+    printf "                                                                                 \n"
+    printf "                                                                                 \n"
+    printf "    --deinvert <preset>   deinvert the transmission if it's scrambled,           \n"
+    printf "                          see https://github.com/windytan/deinvert for details   \n"
+    printf "                                                                                 \n"
+    printf "  To stop 'rtl_fm' running on background use 'rtl-fm-stop' script                \n"
+    printf "                                                                                 \n"
+    printf "                                                                                 \n"
+}
+
+# Define available options
+TEMP=$(getopt -o M:f:l:g:p:s:d:h -l play,stream,transcribe,deinvert:,sar:,play-sar: -n 'rtl-fm' -- "$@")
+if [[ $? != 0 ]]; then echo "Terminating..." >&2 ; exit 1 ; fi
+eval set -- "$TEMP"
+
+# Define defaults
+DEVICE="-d 0"
+DEVICE_ID=0
+SAMPLE_RATE=
+SAMPLE_RATE_VALUE=24000
+PLAY=false
+STREAM=false
+SAR=false
+PLAY_SAR=false
+TRANSCRIBE=false
+DEINVERT=false
+DEINVERT_DIR="$HOME/gits/deinvert/src"
+
+while true; do
+  case "$1" in
+    -M ) MODE="$1 $2"; shift 2 ;;
+    -f ) FREQUENCIES+="$1 $2 "; shift 2 ;;
+    -l ) SQUELCH="$1 $2"; shift 2 ;;
+    -g ) GAIN="$1 $2"; shift 2 ;;
+    -p ) PPM_ERROR="$1 $2"; shift 2 ;;
+    -s ) SAMPLE_RATE="$1 $2"; shift 2 ;;
+    -d ) DEVICE="$1 $2"; DEVICE_ID="$2"; shift 2 ;;
+    -h ) usage; exit 0 ;;
+    --sar )
+      SAR=true; FILENAME="$2"; shift 2 ;;
+    --play-sar )
+      PLAY_SAR=true; FILENAME="$2"; shift 2 ;;
+    --play )
+      PLAY=true; shift ;;
+    --stream )
+      STREAM=true; shift ;;
+    --transcribe )
+      TRANSCRIBE=true; shift ;;
+    --deinvert )
+      DEINVERT=true; DEINVERT_PRESET="$2"; shift 2 ;;
+    -- ) shift; break ;;
+    * ) break ;;
+  esac
+done
+
+# Define recordings directory, create if necessary
+RECORDINGS_DIR="$HOME/recordings/device-${DEVICE_ID}"
+if [[ ! -d "$RECORDINGS_DIR" ]]; then
+  mkdir -p "$RECORDINGS_DIR"
+fi
+
+# Get the sample rate value to pass it to piped commands
+if [[ $SAMPLE_RATE ]]; then
+  SAMPLE_RATE_VALUE=$(echo "$SAMPLE_RATE" | cut -d " " -f 2)
+fi
+
+# Deinvert doesn't take short values like 30K so we convert it to 30000
+if [[ "$DEINVERT" = true ]]; then
+    if grep -i k <<< "${SAMPLE_RATE_VALUE}"; then
+      SAMPLE_RATE_VALUE="$(sed 's/[k,K]/000/g' <<< "${SAMPLE_RATE_VALUE}")"
+    fi
+fi
+
+# Define commands with their parameters
+RTL_FM_CMD="rtl_fm ${MODE} ${FREQUENCIES} ${SQUELCH} ${GAIN} ${PPM_ERROR} ${SAMPLE_RATE} ${DEVICE}"
+PLAY_CMD="play -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - sinc 400-3000"
+CONVERT_CMD="sox -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - -t mp3 - sinc 400-3000"
+STREAM_CMD="cvlc -v - --sout '#standard{access=http,mux=ogg,dst=0.0.0.0:8080}'"
+SAR_CMD="sox -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - -t mp3 ${RECORDINGS_DIR}/${FILENAME}.mp3 sinc 400-3000 silence 1 0.1 1% 1 5.0 1% : newfile : restart &"
+PLAY_SAR_CMD="play -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - | rec -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - -t mp3 ${RECORDINGS_DIR}/${FILENAME}.mp3 sinc 400-3000 silence 1 0.1 1% 1 5.0 1% : newfile : restart"
+TRANSCRIBE_CMD="nohup transcribe --dir ${RECORDINGS_DIR} --device ${DEVICE_ID} &"
+DEINVERT_CMD="${DEINVERT_DIR}/deinvert -r ${SAMPLE_RATE_VALUE} -p ${DEINVERT_PRESET}"
+
+# Combine executable command for 'Play' action
+if [[ "$PLAY" = true ]]; then
+  if [[ "$DEINVERT" = true ]]; then
+    cmd="${RTL_FM_CMD} | ${DEINVERT_CMD} | ${PLAY_CMD}"
+  else
+    cmd="${RTL_FM_CMD} | ${PLAY_CMD}"
+  fi
+
+# Combine executable command for 'Stream' action
+elif [[ "$STREAM" = true ]]; then
+  if [[ "$DEINVERT" = true ]]; then
+    cmd="${RTL_FM_CMD} | ${DEINVERT_CMD} | ${CONVERT_CMD} | ${STREAM_CMD}"
+  else
+    cmd="${RTL_FM_CMD} | ${CONVERT_CMD} | ${STREAM_CMD}"
+  fi
+
+# Combine executable command for 'Sound Activated Recording' action
+elif [[ "$SAR" = true ]]; then
+  if [[ "$DEINVERT" = true ]]; then
+    cmd="${RTL_FM_CMD} | ${DEINVERT_CMD} | ${SAR_CMD}"
+  else
+    cmd="${RTL_FM_CMD} | ${SAR_CMD}"
+  fi
+
+# Combine executable command for 'Play and Record' action
+elif [[ "$PLAY_SAR" = true ]]; then
+  if [[ "$DEINVERT" = true ]]; then
+    cmd="${RTL_FM_CMD} | ${DEINVERT_CMD} | ${PLAY_SAR_CMD}"
+  else
+    cmd="${RTL_FM_CMD} | ${PLAY_SAR_CMD}"
+  fi
+fi
+
+# Print combined command for review/troubleshooting
+echo "$cmd"
+
+# Execute combined command
+eval "$cmd"
+
+# Launch transcribe script
+if [[ "$TRANSCRIBE" = true ]]; then
+  eval "$TRANSCRIBE_CMD"
+fi
