@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+usage() {
+    printf "                                                \n"
+    printf "  Stops 'rtl_fm' if it's running.               \n"
+    printf "                                                \n"
+    printf "  Usage: rtl-fm-stop < device ID >              \n"
+    printf "                                                \n"
+}
+
+while true; do
+  case "$1" in
+    -h ) usage; exit 0 ;;
+    * ) DEVICE_ID=$1 ; break ;;
+  esac
+done
+
+rtl_fm_proc_id="$(pgrep rtl_fm -a | agrep "rtl_fm;-d ${DEVICE_ID}" | awk '{print $1}')"
+
+if [[ $rtl_fm_proc_id -gt 0 ]]; then
+  kill "$rtl_fm_proc_id"
+  pkill vlc
+  echo "Stopped rtl_fm process ID ${rtl_fm_proc_id}"
+else
+  echo "rtl_fm is not running"
+fi

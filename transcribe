@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+
+usage() {
+    printf "                                                                        \n"
+    printf "  Starts monitoring the provided directory for new mp3 files.           \n"
+    printf "  Once the new file created/closed it uploads the file to the AWS S3    \n"
+    printf "  bucket and creates a new AWS Transcribe job for that file.            \n"
+    printf "                                                                        \n"
+    printf "  The script will exit automatically after the 'rtl_fm' process         \n"
+    printf "  this run associates with exits.                                       \n"
+    printf "                                                                        \n"
+    printf "  Usage: transcribe --dir <directory name> --device <device ID>         \n"
+    printf "                                                                        \n"
+}
+
+# Define available options
+TEMP=$(getopt -o h -l dir:,device: -n 'transcribe' -- "$@")
+if [[ $? != 0 ]]; then echo "Terminating..." >&2 ; exit 1 ; fi
+eval set -- "$TEMP"
+
+while true; do
+  case "$1" in
+    --dir ) RECORDINGS_DIRECTORY=$2; shift 2 ;;
+    --device ) DEVICE_ID=$2; shift 2 ;;
+    -h ) usage; exit 0 ;;
+    * ) break ;;
+  esac
+done
+
+# Define defaults
+UPLOADS_BUCKET_NAME="radio-uploads"
+TRANSCRIPTIONS_BUCKET_NAME="radio-transcripts"
+
+function create_transcribe_job() {
+  FILENAME_WITH_PATH="${RECORDINGS_DIRECTORY}/$1"
+  TRANSCRIPTION_JOB_NAME=$(echo "${FILENAME}" | cut -d "." -f 1)
+  MEDIA_FILE_URI="s3://${UPLOADS_BUCKET_NAME}/${FILENAME}"
+
+  AWS_COPY_CMD="aws s3 cp ${FILENAME_WITH_PATH} s3://${UPLOADS_BUCKET_NAME}"
+  AWS_LS_CMD="aws s3 ls s3://${UPLOADS_BUCKET_NAME}/${FILENAME}"
+  AWS_TRANSCRIBE_CMD="aws transcribe start-transcription-job \
+    --transcription-job-name ${TRANSCRIPTION_JOB_NAME} \
+    --identify-language \
+    --media-format mp3 \
+    --media MediaFileUri=${MEDIA_FILE_URI} \
+    --output-bucket-name ${TRANSCRIPTIONS_BUCKET_NAME}"
+
+  eval "${AWS_COPY_CMD}"
+
+  while true; do
+    eval "$AWS_LS_CMD"
+    if [[ $? == 0 ]]; then
+      eval "$AWS_TRANSCRIBE_CMD"
+      break
+    else
+      sleep 3
+    fi
+  done
+}
+
+# Get the ID of the rtl_fm process so we can monitor it and stop this script
+# when the main process exits because we don't need it to run anymore
+RTL_FM_PROC_ID="$(pgrep rtl_fm -a | agrep "rtl_fm;-d ${DEVICE_ID}" | awk '{print $1}')"
+
+while true; do
+  # Monitor the recordings directory for closed for write files that sox creates
+  # and create a transcript job for the new file
+  # This loop cycles when 'inotifywait' reports new file created
+  FILENAME="$(inotifywait -q -e close_write --format %f "${RECORDINGS_DIRECTORY}")"
+  if [[ $(echo "$FILENAME" | cut -d '.' -f 2) -eq 'mp3' ]]; then
+    create_transcribe_job "$FILENAME"
+  fi
+
+  # Check if the same rtl_fm process running, exit if not
+  is_proc_up="$(pgrep rtl_fm -a | agrep "rtl_fm;-d ${DEVICE_ID}" | awk '{print $1}')"
+  if [[ $RTL_FM_PROC_ID -ne $is_proc_up ]]; then
+    exit 0
+  fi
+done
