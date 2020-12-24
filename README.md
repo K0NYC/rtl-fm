@@ -19,6 +19,6 @@ Creates AWS Transcribe jobs for recorded files to get transcripts for the record
 ## Node-Red Dashboard
 
 ### The flow
-
+![](https://github.com/K0NYC/rtl-fm/blob/main/node-red_flow.PNG?raw=true)
 ### The Dashboard
-
+![](https://github.com/K0NYC/rtl-fm/blob/main/dashboard.PNG?raw=true)
