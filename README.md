@@ -15,3 +15,10 @@ Stream recorded mp3 files to the network for listening from a remote location wi
 
 ### transcribe
 Creates AWS Transcribe jobs for recorded files to get transcripts for the recorded speech.
+
+## Node-Red Dashboard
+
+### The flow
+
+### The Dashboard
+
