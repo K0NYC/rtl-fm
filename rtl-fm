@@ -63,7 +63,6 @@ PLAY_SAR=false
 TRANSCRIBE=false
 DEINVERT=false
 DEINVERT_DIR="$HOME/gits/deinvert/src"
-SCRIPTS_DIR="$HOME/scripts"
 
 while true; do
   case "$1" in
@@ -117,7 +116,7 @@ CONVERT_CMD="sox -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - -t mp3 - s
 STREAM_CMD="cvlc -v - --sout '#standard{access=http,mux=ogg,dst=0.0.0.0:8080}'"
 SAR_CMD="sox -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - -t mp3 ${RECORDINGS_DIR}/${FILENAME}.mp3 sinc 400-3000 silence 1 0.1 1% 1 5.0 1% : newfile : restart &"
 PLAY_SAR_CMD="play -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - | rec -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - -t mp3 ${RECORDINGS_DIR}/${FILENAME}.mp3 sinc 400-3000 silence 1 0.1 1% 1 5.0 1% : newfile : restart"
-TRANSCRIBE_CMD="${SCRIPTS_DIR}/transcribe --dir ${RECORDINGS_DIR} --device ${DEVICE_ID} &"
+TRANSCRIBE_CMD="transcribe --dir ${RECORDINGS_DIR} --device ${DEVICE_ID} &"
 DEINVERT_CMD="${DEINVERT_DIR}/deinvert -r ${SAMPLE_RATE_VALUE} -p ${DEINVERT_PRESET}"
 
 # Combine executable command for 'Play' action
