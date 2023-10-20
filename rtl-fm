@@ -118,7 +118,7 @@ if [[ "$DEINVERT" = true ]]; then
 fi
 
 # Define commands with their parameters
-RTL_FM_CMD="rtl_fm ${MODE} ${FREQUENCIES} ${SQUELCH} ${GAIN} ${PPM_ERROR} ${SAMPLE_RATE} ${DEVICE} -E deemp "
+RTL_FM_CMD="/usr/local/bin/rtl_fm ${MODE} ${FREQUENCIES} ${SQUELCH} ${GAIN} ${PPM_ERROR} ${SAMPLE_RATE} ${DEVICE} -E deemp "
 PLAY_CMD="play -t raw -r ${PLAYBACK_SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - sinc 400-3000"
 CONVERT_CMD="sox -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - -t mp3 - sinc 400-3000"
 STREAM_CMD="cvlc -v - --sout '#standard{access=http,mux=ogg,dst=0.0.0.0:8080}'"
