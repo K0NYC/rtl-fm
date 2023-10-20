@@ -5,18 +5,19 @@ usage() {
     printf "  Usage: rtl-fm <rtl_fm options> actions                                         \n"
     printf "                                                                                 \n"
     printf "  rtl_fm options:                                                                \n"
-    printf "    -f  frequency_to_tune_to [Hz]                                                \n"
+    printf "    -f  frequency to tune to [Hz]                                                \n"
     printf "        use multiple -f for scanning (requires squelch)                          \n"
     printf "        ranges supported, -f 118M:137M:25k                                       \n"
     printf "    [-M modulation (default: fm)]                                                \n"
     printf "        fm, wbfm, raw, am, usb, lsb                                              \n"
     printf "        wbfm == -M fm -s 170k -o 4 -A fast -r 32k -l 0 -E deemp                  \n"
     printf "        raw mode outputs 2x16 bit IQ pairs                                       \n"
-    printf "    [-s sample_rate (default: 24k)]                                              \n"
-    printf "    [-d device_index (default: 0)]                                               \n"
-    printf "    [-g tuner_gain (default: automatic)]                                         \n"
-    printf "    [-l squelch_level (default: 0/off)]                                          \n"
-    printf "    [-p ppm_error (default: 0)]                                                  \n"
+    printf "    [-s sample rate (default: 24k)]                                              \n"
+    printf "    [-r playback sample rate (default: 24k)]                                    \n"
+    printf "    [-d device index (default: 0)]                                               \n"
+    printf "    [-g tuner gain (default: automatic)]                                         \n"
+    printf "    [-l squelch level (default: 0/off)]                                          \n"
+    printf "    [-p ppm error (default: 0)]                                                  \n"
     printf "                                                                                 \n"
     printf "                                                                                 \n"
     printf "  Actions are:                                                                   \n"
@@ -47,7 +48,7 @@ usage() {
 }
 
 # Define available options
-TEMP=$(getopt -o M:f:l:g:p:s:d:h -l play,stream,transcribe,deinvert:,sar:,play-sar: -n 'rtl-fm' -- "$@")
+TEMP=$(getopt -o M:f:l:g:p:s:r:d:h -l play,stream,transcribe,deinvert:,sar:,play-sar: -n 'rtl-fm' -- "$@")
 if [[ $? != 0 ]]; then echo "Terminating..." >&2 ; exit 1 ; fi
 eval set -- "$TEMP"
 
@@ -55,6 +56,7 @@ eval set -- "$TEMP"
 DEVICE="-d 0"
 DEVICE_ID=0
 SAMPLE_RATE=
+PLAYBACK_SAMPLE_RATE=24000
 SAMPLE_RATE_VALUE=24000
 PLAY=false
 STREAM=false
@@ -72,6 +74,7 @@ while true; do
     -g ) GAIN="$1 $2"; shift 2 ;;
     -p ) PPM_ERROR="$1 $2"; shift 2 ;;
     -s ) SAMPLE_RATE="$1 $2"; shift 2 ;;
+    -r ) PLAYBACK_SAMPLE_RATE="$1 $2"; shift 2 ;;
     -d ) DEVICE="$1 $2"; DEVICE_ID="$2"; shift 2 ;;
     -h ) usage; exit 0 ;;
     --sar )
@@ -102,6 +105,11 @@ if [[ $SAMPLE_RATE ]]; then
   SAMPLE_RATE_VALUE=$(echo "$SAMPLE_RATE" | cut -d " " -f 2)
 fi
 
+# Get the sample rate value to pass it to piped commands
+if [[ $PLAYBACK_SAMPLE_RATE ]]; then
+  PLAYBACK_SAMPLE_RATE_VALUE=$(echo "$PLAYBACK_SAMPLE_RATE" | cut -d " " -f 2)
+fi
+
 # Deinvert doesn't take short values like 30K so we convert it to 30000
 if [[ "$DEINVERT" = true ]]; then
     if grep -i k <<< "${SAMPLE_RATE_VALUE}"; then
@@ -110,13 +118,13 @@ if [[ "$DEINVERT" = true ]]; then
 fi
 
 # Define commands with their parameters
-RTL_FM_CMD="rtl_fm ${MODE} ${FREQUENCIES} ${SQUELCH} ${GAIN} ${PPM_ERROR} ${SAMPLE_RATE} ${DEVICE}"
-PLAY_CMD="play -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - sinc 400-3000"
+RTL_FM_CMD="rtl_fm ${MODE} ${FREQUENCIES} ${SQUELCH} ${GAIN} ${PPM_ERROR} ${SAMPLE_RATE} ${DEVICE} -E deemp "
+PLAY_CMD="play -t raw -r ${PLAYBACK_SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - sinc 400-3000"
 CONVERT_CMD="sox -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - -t mp3 - sinc 400-3000"
 STREAM_CMD="cvlc -v - --sout '#standard{access=http,mux=ogg,dst=0.0.0.0:8080}'"
 SAR_CMD="sox -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - -t mp3 ${RECORDINGS_DIR}/${FILENAME}.mp3 sinc 400-3000 silence 1 0.1 1% 1 5.0 1% : newfile : restart &"
 PLAY_SAR_CMD="play -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - | rec -t raw -r ${SAMPLE_RATE_VALUE} -e s -b 16 -c 1 -V3 - -t mp3 ${RECORDINGS_DIR}/${FILENAME}.mp3 sinc 400-3000 silence 1 0.1 1% 1 5.0 1% : newfile : restart"
-TRANSCRIBE_CMD="transcribe --dir ${RECORDINGS_DIR} --device ${DEVICE_ID} &"
+TRANSCRIBE_CMD="nohup transcribe --dir ${RECORDINGS_DIR} --device ${DEVICE_ID} &"
 DEINVERT_CMD="${DEINVERT_DIR}/deinvert -r ${SAMPLE_RATE_VALUE} -p ${DEINVERT_PRESET}"
 
 # Combine executable command for 'Play' action
