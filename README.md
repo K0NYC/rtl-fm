@@ -16,9 +16,8 @@ Stream recorded mp3 files to the network for listening from a remote location wi
 ### transcribe
 Creates AWS Transcribe jobs for recorded files to get transcripts for the recorded speech.
 
-## Node-Red Dashboard
+## Installation
+Clone this repo, add the directory with `rtl-fm` to the path or simlink to a directory that is on the path already.
 
-### The flow
-![](https://github.com/K0NYC/rtl-fm/blob/main/node-red_flow.PNG?raw=true)
-### The Dashboard
-![](https://github.com/K0NYC/rtl-fm/blob/main/dashboard.PNG?raw=true)
+## Prerequisites
+You must have [**rtl-sdr**](https://osmocom.org/projects/rtl-sdr/wiki#Building-the-software) installed. For plaing and streaming recordings you need VLC installed. 
